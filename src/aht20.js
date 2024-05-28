@@ -1,11 +1,11 @@
 const COMMANDS = {
 	RESET: 0xBA,
-	INIT: 0xBE,
+	// INIT: 0xBE,
 	MEASUREMENT: 0xAC,
 }
 
 const MEASUREMENT_COMMAND_BYTES = Uint8Array.from( [ COMMANDS.MEASUREMENT, 0x33, 0x00 ] )
-const INITIALIZE_COMMAND_BYTES = Uint8Array.from( [ COMMANDS._INIT, ])
+// const INITIALIZE_COMMAND_BYTES = Uint8Array.from( [ COMMANDS.INIT, 0x08, 0x00 ])
 const RESET_COMMAND_BYTES = Uint8Array.from([ COMMANDS.RESET, ])
 
 function calculateCRC(buffer) {
@@ -69,7 +69,8 @@ export class AHT20 {
 	}
 
 	async initialize() {
-		return this.#bus.i2cWrite(INITIALIZE_COMMAND_BYTES)
+		throw new Error('no implementation')
+	// 	return this.#bus.i2cWrite(INITIALIZE_COMMAND_BYTES)
 	}
 
 	async getState() {
