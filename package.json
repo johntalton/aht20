@@ -1,11 +1,14 @@
 {
 	"name": "@johntalton/aht20",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"type": "module",
 	"exports": {
 		".": "./src/index.js"
 	},
 	"files": [
 		"src/*.js"
-	]
+	],
+	"devDependencies": {
+		"@johntalton/and-other-delights": "^8.6.3"
+	}
 }

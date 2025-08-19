@@ -1,13 +1,48 @@
+/**
+ * @import { I2CAddressedBus, I2CBufferSource } from '@johntalton/and-other-delights'
+ */
+
+/**
+ * @typedef {Object} Status
+ * @property {boolean} initialized
+ * @property {boolean} busy
+ * @property {boolean} calibrated
+ */
+
+/**
+ * @typedef {Object} Measurement
+ * @property {boolean} validCRC,
+ * @property {number} humidityRH,
+ * @property {number} temperatureC
+ */
+
+/** @typedef {Measurement|Status} MeasurementWithStatus */
+
 const COMMANDS = {
 	RESET: 0xBA,
 	// INIT: 0xBE,
 	MEASUREMENT: 0xAC,
 }
 
+const CALIBRATION_REGISTERS = [ 0x1B, 0x1C, 0x1E ]
+const CALIBRATION_MASK = 0xB0
+
 const MEASUREMENT_COMMAND_BYTES = Uint8Array.from( [ COMMANDS.MEASUREMENT, 0x33, 0x00 ] )
 // const INITIALIZE_COMMAND_BYTES = Uint8Array.from( [ COMMANDS.INIT, 0x08, 0x00 ])
 const RESET_COMMAND_BYTES = Uint8Array.from([ COMMANDS.RESET, ])
 
+const STATUS_BYTE_LENGTH = 1
+const CRC_BYTE_LENGTH = 1
+const MEASUREMENT_BYTE_LENGTH = STATUS_BYTE_LENGTH + 5 + CRC_BYTE_LENGTH
+
+const STATE_MAGIC_UNINITIALIZED = 0x18
+const STATE_BUSY_MASK = 0b1000_0000
+const STATE_CALIBRATED_MASK = 0b0000_1000
+
+/**
+	 * @param {I2CBufferSource} buffer
+	 * @returns {number}
+	 */
 function calculateCRC(buffer) {
 	const u8 = ArrayBuffer.isView(buffer) ?
 		new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
@@ -31,7 +66,10 @@ function calculateCRC(buffer) {
 }
 
 export class Converter {
-	/** @param {ArrayBufferLike|DataView|ArrayBufferView} buffer  */
+	/**
+	 * @param {I2CBufferSource} buffer
+	 * @returns {Status}
+	 */
 	static decodeState(buffer) {
 		const u8 = ArrayBuffer.isView(buffer) ?
 			new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
@@ -39,14 +77,45 @@ export class Converter {
 
 		const [ state ] = u8
 
-		const initialized = state !== 0x18
+		const initialized = state !== STATE_MAGIC_UNINITIALIZED
 
-		const busy = (state & 0b1000_0000) !== 0
-		const calibrated = (state & 0b0000_1000) !== 0
+		const busy = (state & STATE_BUSY_MASK) !== 0
+		const calibrated = (state & STATE_CALIBRATED_MASK) !== 0
 
 		return {
 			initialized,
-			busy, calibrated
+			busy,
+			calibrated
+		}
+	}
+
+	/**
+	 * @param {I2CBufferSource} buffer
+	 * @returns {MeasurementWithStatus}
+	 */
+	static decodeMeasurement(buffer) {
+		const u8 = ArrayBuffer.isView(buffer) ?
+			new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
+			new Uint8Array(buffer, 0, buffer.byteLength)
+
+		const [ _, hum0, hum1, ht, temp0, temp1, crc ] = u8
+
+		const state = Converter.decodeState(u8.subarray(0, 1))
+		const expectedCRC = calculateCRC(u8.subarray(0, -1))
+
+		const validCRC = expectedCRC === crc
+
+		const humidityRaw = (hum0 << 12) | (hum1 << 4) | (ht >> 4)
+		const temperatureRaw = ((ht & 0b0000_1111) << 16) | (temp0 << 8) | temp1
+
+		const humidityRH = (humidityRaw / Math.pow(2, 20)) * 100
+		const temperatureC = (temperatureRaw / Math.pow(2, 20)) * 200 - 50
+
+		return {
+			...state,
+			validCRC,
+			humidityRH,
+			temperatureC
 		}
 	}
 }
@@ -68,13 +137,8 @@ export class AHT20 {
 		return this.#bus.i2cWrite(RESET_COMMAND_BYTES)
 	}
 
-	async initialize() {
-		throw new Error('no implementation')
-	// 	return this.#bus.i2cWrite(INITIALIZE_COMMAND_BYTES)
-	}
-
 	async getState() {
-		const ab = await this.#bus.i2cRead(1)
+		const ab = await this.#bus.i2cRead(STATUS_BYTE_LENGTH)
 		return Converter.decodeState(ab)
 	}
 
@@ -83,29 +147,7 @@ export class AHT20 {
 	}
 
 	async getMeasurement() {
-		const ab = await this.#bus.i2cRead(7)
-		const u8 = new Uint8Array(ab)
-
-		const [
-			_, hum0, hum1, ht, temp0, temp1, crc
-		] = u8
-
-		const expectedCRC = calculateCRC(u8.subarray(0, -1))
-		const validCRC = expectedCRC === crc
-
-		const state = Converter.decodeState(u8.subarray(0, 1))
-
-		const humidityRaw = (hum0 << 12) | (hum1 << 4) | (ht >> 4)
-		const temperatureRaw = ((ht & 0b0000_1111) << 16) | (temp0 << 8) | temp1
-
-		const humidityRH = (humidityRaw / Math.pow(2, 20)) * 100
-		const temperatureC = (temperatureRaw / Math.pow(2, 20)) * 200 - 50
-
-		return {
-			...state,
-			validCRC,
-			humidityRH,
-			temperatureC
-		}
+		const ab = await this.#bus.i2cRead(MEASUREMENT_BYTE_LENGTH)
+		return Converter.decodeMeasurement(ab)
 	}
 }
