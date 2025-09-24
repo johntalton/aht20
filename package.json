@@ -1,6 +1,7 @@
 {
 	"name": "@johntalton/aht20",
-	"version": "1.2.1",
+	"version": "1.2.2",
+	"license": "MIT",
 	"type": "module",
 	"exports": {
 		".": "./src/index.js"
@@ -10,5 +11,8 @@
 	],
 	"devDependencies": {
 		"@johntalton/and-other-delights": "^8.6.3"
+	},
+	"repository": {
+		"url": "https://github.com/johntalton/aht20"
 	}
 }
